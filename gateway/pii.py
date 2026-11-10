@@ -72,7 +72,7 @@ _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 _IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b")
 
-_CREDIT_CARD = re.compile(r"\b(?:\d[ -]?){13,19}\b")
+_CREDIT_CARD = re.compile(r"\b\d(?:[ -]?\d){12,18}\b")
 
 # International numbers (+43 ..., 0043 ...) and national numbers with a
 # separator (0664 1234567). A post-filter requires at least 8 digits so
@@ -118,12 +118,24 @@ _RULE_TO_CONFIG_KEY = {
 def detect(text: str, cfg: PiiConfig | None = None) -> list[PiiMatch]:
     """Find all PII spans. Overlapping spans keep the earliest/longest match."""
     cfg = cfg or PiiConfig()
+    # Anything shaped like an IBAN is treated as one unit: if its
+    # checksum fails it is an ordinary reference code, and the digit
+    # groups inside it must not be picked up as a card or phone number.
+    iban_shaped = [(m.start(), m.end()) for m in _IBAN.finditer(text)]
+
+    def inside_iban_shape(start: int, end: int) -> bool:
+        return any(start < e and end > s for s, e in iban_shaped)
+
     matches: list[PiiMatch] = []
     for rule_id, pattern, placeholder, validator in RULES:
         if not cfg.enabled.get(_RULE_TO_CONFIG_KEY[rule_id], True):
             continue
         for m in pattern.finditer(text):
             if validator is not None and not validator(m.group(0)):
+                continue
+            if rule_id in ("pii.credit_card", "pii.phone") and inside_iban_shape(
+                m.start(), m.end()
+            ):
                 continue
             matches.append(
                 PiiMatch(rule_id, m.start(), m.end(), m.group(0), placeholder)
