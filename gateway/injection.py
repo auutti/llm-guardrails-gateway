@@ -38,6 +38,10 @@ def normalize(text: str) -> tuple[str, bool]:
     return normalized, had_invisible
 
 
+# All patterns are written to run in linear time on hostile input
+# (bounded repetitions, anchored runs); tests/test_performance.py guards
+# against regressions.
+#
 # Signal list: (id, compiled regex, weight). Weights reflect how strongly
 # a signal correlates with a real attack; several weak signals together
 # can still cross the block threshold.
@@ -127,7 +131,7 @@ SIGNALS: list[tuple[str, re.Pattern, float]] = [
             r"(send|post|forward|email|transmit)\s+(this|the conversation"
             r"|everything|all (data|messages)|the (chat|history))"
             r".{0,30}(to\s+)?https?://"
-            r"|!\[[^\]]*\]\(https?://"  # markdown image exfiltration
+            r"|!\[[^\]]{0,300}\]\(https?://"  # markdown image exfiltration
         ),
         0.4,
     ),
@@ -135,7 +139,9 @@ SIGNALS: list[tuple[str, re.Pattern, float]] = [
         "inj.base64_payload",
         re.compile(
             r"(decode|execute|run|eval).{0,60}[a-z0-9+/=]{60,}"
-            r"|[a-z0-9+/=]{60,}.{0,60}(decode|execute|run|eval)"
+            # Lookbehind + possessive quantifier: each long run is scanned
+            # exactly once, so hostile input cannot trigger backtracking.
+            r"|(?<![a-z0-9+/=])[a-z0-9+/=]{60,}+.{0,60}(decode|execute|run|eval)"
         ),
         0.4,
     ),

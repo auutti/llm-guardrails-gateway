@@ -120,6 +120,15 @@ not covered; attackers who know the signal list can word around it.
 This is the layer where an ML classifier adds the most value — see
 section 7.
 
+**Denial-of-service hardening.** The guards run regular expressions on
+attacker-controlled text, so a pattern with unbounded backtracking would
+let a single crafted request stall the service. An early version had
+exactly this flaw: about 20,000 repeated characters kept one signal busy
+for more than 20 seconds. All patterns now use bounded repetitions and
+anchored or possessive runs so they finish in linear time, and
+`tests/test_performance.py` feeds 100,000-character hostile inputs
+through every guard on each CI run.
+
 ## 4. Policy guard
 
 Topics are configured, not hard-coded: each has a name, an action
@@ -190,7 +199,7 @@ attack dataset, which is the natural next step.
 | Regex PII misses names/free-form facts | NER-based detector (e.g. Presidio) behind the same guard interface |
 | Injection heuristics miss paraphrase and non-English attacks | ML classifier (e.g. a Llama-Guard-class model or embedding similarity) as an additional scored signal |
 | Single-instance JSONL audit log | Ship records to a log pipeline; JSONL is the demonstration format |
-| No authentication, rate limiting or multi-tenancy | Standard API-gateway concerns, out of scope here |
+| No authentication, rate limiting, request-size limit or multi-tenancy | Standard API-gateway concerns, out of scope here |
 | Output streaming is not supported | Guarding streamed tokens requires incremental scanning |
 
 The guards share one interface — take text, return a verdict with

@@ -68,7 +68,12 @@ def iban_valid(candidate: str) -> bool:
 # Rules: (rule_id, regex, placeholder, validator or None)
 # ---------------------------------------------------------------------------
 
-_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+# The lookbehind pins each match to the start of a run of address
+# characters. Without it the engine retries from every position inside a
+# long run, which is quadratic on hostile input (a denial-of-service risk).
+_EMAIL = re.compile(
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
+)
 
 _IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b")
 
