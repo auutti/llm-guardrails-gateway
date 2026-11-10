@@ -1,0 +1,110 @@
+# Runs the unit tests, then the live demo: the gateway is started in
+# front of a real open-weight model (qwen2.5:0.5b served by Ollama on
+# the CPU runner) and the full attack corpus is evaluated. The resulting
+# report is committed to reports/ -- zero cost, no API keys, no secrets.
+
+name: guardrails-demo
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "gateway/**"
+      - "eval/**"
+      - "config/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".github/workflows/guardrails-demo.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: guardrails-demo
+  cancel-in-progress: false
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m pytest -q
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start Ollama and pull the model
+        run: |
+          # The installer usually starts a systemd service; fall back to
+          # a manual start if it did not.
+          if ! pgrep -x ollama > /dev/null; then
+            nohup ollama serve > /tmp/ollama.log 2>&1 &
+          fi
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:11434/api/tags > /dev/null && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:11434/api/tags > /dev/null
+          ollama pull qwen2.5:0.5b || (sleep 5 && ollama pull qwen2.5:0.5b)
+
+      - name: Start the gateway
+        run: |
+          UPSTREAM_BASE_URL=http://127.0.0.1:11434/v1 \
+            nohup python -m uvicorn gateway.app:app --host 127.0.0.1 --port 8000 \
+            > /tmp/gateway.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/health > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8000/health
+
+      - name: Warm up the model
+        run: |
+          curl -sf http://127.0.0.1:8000/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -d '{"model":"qwen2.5:0.5b","messages":[{"role":"user","content":"Say hello in three words."}],"max_tokens":16}' \
+            > /dev/null
+
+      - name: Run the live evaluation
+        run: |
+          python eval/run_eval.py \
+            --gateway http://127.0.0.1:8000 \
+            --model qwen2.5:0.5b \
+            --corpus eval/corpus.json \
+            --out reports/
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-report
+          path: |
+            reports/
+            /tmp/ollama.log
+            /tmp/gateway.log
+
+      - name: Commit the report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/
+          if git diff --cached --quiet; then
+            echo "No report changes to commit."
+          else
+            git commit -m "Demo report $(date -u +%Y-%m-%d)"
+            git push
+          fi
