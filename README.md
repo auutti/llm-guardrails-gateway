@@ -121,6 +121,11 @@ that blocks everything is useless, so the **false-positive rate is
 measured and published** alongside the attack-handling rate. One edge
 case is a deliberate known false positive and is reported as such.
 
+The corpus was written together with the guard rules. The published
+rates therefore show that the gateway behaves as specified end to end
+against a real model; they are not an estimate of how it would perform
+against attacks it has never seen.
+
 Run it against your own gateway instance:
 
 ```bash

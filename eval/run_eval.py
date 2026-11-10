@@ -97,6 +97,13 @@ def build_report(records: list[dict], model: str) -> tuple[str, dict]:
     expected_met = [r for r in records if r["ok"]]
     errors = [r for r in records if r["verdict"] == "error"]
     latencies = [r["latency_ms"] for r in records if r.get("latency_ms")]
+    # Blocked requests never reach the model, so their latency is the
+    # cost of the guards alone.
+    blocked_latencies = [
+        r["latency_ms"]
+        for r in records
+        if r.get("latency_ms") and r.get("http_status") == 400
+    ]
 
     def pct(part: int, whole: int) -> str:
         return f"{100 * part / whole:.1f}%" if whole else "n/a"
@@ -112,6 +119,9 @@ def build_report(records: list[dict], model: str) -> tuple[str, dict]:
         "latency_ms_mean": round(mean(latencies), 1) if latencies else None,
         "latency_ms_p50": round(median(latencies), 1) if latencies else None,
         "latency_ms_max": round(max(latencies), 1) if latencies else None,
+        "latency_ms_blocked_mean": round(mean(blocked_latencies), 2)
+        if blocked_latencies
+        else None,
     }
 
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -129,6 +139,11 @@ def build_report(records: list[dict], model: str) -> tuple[str, dict]:
         "Every number below was measured in this run. Misses are listed",
         "openly - an evaluation that only ever reports successes is not an",
         "evaluation.",
+        "",
+        "**How to read these numbers:** the corpus was written together with",
+        "the guard rules, so the rates show that the gateway behaves as",
+        "specified end to end. They are not an estimate of how it would",
+        "perform against attacks it has never seen.",
         "",
         "## Summary by category",
         "",
@@ -159,8 +174,11 @@ def build_report(records: list[dict], model: str) -> tuple[str, dict]:
         f" ({len(false_positives)}/{len(benign)})",
         f"- **All expectations met:** {metrics['expected_met_rate']}"
         f" ({len(expected_met)}/{len(records)})",
-        f"- **Gateway latency:** mean {metrics['latency_ms_mean']} ms, "
-        f"p50 {metrics['latency_ms_p50']} ms, max {metrics['latency_ms_max']} ms",
+        f"- **End-to-end latency (includes model generation):** mean "
+        f"{metrics['latency_ms_mean']} ms, p50 {metrics['latency_ms_p50']} ms, "
+        f"max {metrics['latency_ms_max']} ms",
+        f"- **Latency of blocked requests (guards only, model never called):** "
+        f"mean {metrics['latency_ms_blocked_mean']} ms",
         "",
     ]
 

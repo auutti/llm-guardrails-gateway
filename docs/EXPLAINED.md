@@ -176,6 +176,13 @@ Why this matters: a guard that blocks everything trivially achieves a
 100 % attack-handling rate. Without a published false-positive rate,
 that number is marketing, not measurement.
 
+**What the numbers do not show.** The corpus was written together with
+the guard rules, so it is an in-sample test: it proves the gateway does
+what it was specified to do, end to end, against a real model. It says
+nothing about attacks phrased in ways the rules do not anticipate. A
+fair estimate of real-world performance needs a held-out or public
+attack dataset, which is the natural next step.
+
 ## 7. Honest limitations and extension path
 
 | Limitation | What would fix it |
