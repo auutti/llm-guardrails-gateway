@@ -1,0 +1,63 @@
+# Guardrails configuration.
+# Every threshold and rule toggle lives here so behaviour can be tuned
+# without touching code.
+
+upstream:
+  # Any OpenAI-compatible endpoint works (Ollama, llama.cpp server,
+  # OpenAI, Anthropic via a compatibility proxy, vLLM, ...).
+  # Overridden by the UPSTREAM_BASE_URL environment variable if set.
+  base_url: "http://127.0.0.1:11434/v1"
+  timeout_seconds: 120
+
+pii:
+  # Each detector can be switched off individually.
+  enabled:
+    email: true
+    phone: true
+    iban: true
+    credit_card: true
+    address: true
+
+injection:
+  # Sum of matched signal weights, capped at 1.0.
+  block_threshold: 0.7
+  flag_threshold: 0.4
+
+policy:
+  topics:
+    - name: weapons_instructions
+      action: block
+      patterns:
+        - "how to (build|make|construct) (a |an )?(bomb|explosive|grenade)"
+        - "instructions for (building|making) (a )?weapon"
+        - "synthesi[sz]e (explosives|nerve agent|sarin|ricin)"
+    - name: malware_creation
+      action: block
+      patterns:
+        - "write (a |an |some )?(ransomware|keylogger|trojan|computer virus)"
+        - "create (a )?malware"
+        - "code (a |an )?exploit for"
+    - name: self_harm
+      action: block
+      patterns:
+        - "how (do i|to|can i) (kill|harm|hurt) myself"
+        - "best way to commit suicide"
+    - name: medical_diagnosis
+      action: flag
+      patterns:
+        - "diagnose (my|me|this patient)"
+        - "what (disease|illness|condition) do i have"
+
+output:
+  # Check the model's answer for leaked PII and policy violations.
+  pii_leak_check: true
+  policy_check: true
+  # Action when a requested JSON schema is not satisfied: flag or block.
+  json_validation_action: flag
+
+audit:
+  path: "logs/audit.jsonl"
+  # Privacy by design: raw prompt/response text is NOT written to the
+  # audit log unless this is explicitly enabled. Only hashes, lengths,
+  # verdicts and timings are stored.
+  log_content: false
